@@ -43,15 +43,22 @@ function parseMultipart(req, body) {
   throw new Error('No image field was received.');
 }
 
-async function readBody(req) {
-  const chunks = [];
-  let total = 0;
-  for await (const chunk of req) {
-    total += chunk.length;
-    if (total > MAX_BYTES + 1024 * 1024) throw new Error('Upload is too large. Maximum size is 5 MB.');
-    chunks.push(chunk);
-  }
-  return Buffer.concat(chunks);
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > MAX_BYTES + 1024 * 1024) {
+        reject(new Error('Upload is too large. Maximum size is 5 MB.'));
+        req.destroy();
+        return;
+      }
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
 }
 
 module.exports = async function handler(req, res) {
