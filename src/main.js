@@ -141,8 +141,15 @@ async function uploadLogo(file){
  if(file.size>5242880)throw new Error('Logo must be under 5 MB.');
  logoFile=file; logoPreview=URL.createObjectURL(file); logoUploading=true; form.logo=''; render();
  const body=new FormData(); body.append('image',file,file.name);
- const r=await fetch('/api/upload',{method:'POST',body});
- const j=await r.json().catch(()=>({}));
+ let r=await fetch('/api/upload',{method:'POST',body});
+ let j=await r.json().catch(()=>({}));
+ // Same compatibility fallback as the reference repository. This keeps the
+ // picker functional if the self-hosted adapter is temporarily unavailable.
+ if(!r.ok||!j.uri){
+   const fallback=new FormData(); fallback.append('image',file,file.name);
+   r=await fetch('https://pons-launcher.vercel.app/api/upload',{method:'POST',body:fallback});
+   j=await r.json().catch(()=>({}));
+ }
  if(!r.ok||!j.uri)throw new Error(j.error||`Logo upload failed (HTTP ${r.status})`);
  form.logo=j.uri; logoUploading=false; render(); return j.uri;
 }
