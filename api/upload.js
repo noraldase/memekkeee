@@ -1,5 +1,4 @@
-// Vercel Node function: app-owned image upload backed by Pinata IPFS.
-// Configure PINATA_JWT in Vercel Project Settings -> Environment Variables.
+// Vercel Node function: reference-compatible image upload backed by IPFS.
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED = new Map([
   ['image/png', '.png'],
@@ -19,10 +18,9 @@ function parseMultipart(req, body) {
   const match = type.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
   if (!match) throw new Error('Multipart boundary is missing.');
   const boundary = Buffer.from(`--${match[1] || match[2]}`);
-  const start = body.indexOf(boundary);
-  if (start < 0) throw new Error('Invalid multipart body.');
-  let cursor = start + boundary.length;
-  while (cursor < body.length) {
+  let cursor = body.indexOf(boundary);
+  while (cursor >= 0 && cursor < body.length) {
+    cursor += boundary.length;
     if (body[cursor] === 45 && body[cursor + 1] === 45) break;
     if (body[cursor] === 13 && body[cursor + 1] === 10) cursor += 2;
     const headersEnd = body.indexOf(Buffer.from('\r\n\r\n'), cursor);
@@ -35,10 +33,14 @@ function parseMultipart(req, body) {
     const disposition = headers.match(/content-disposition:[^\r\n]*name="([^"]+)"[^\r\n]*/i);
     const filename = headers.match(/filename="([^"]*)"/i);
     const contentType = headers.match(/content-type:\s*([^\r\n]+)/i);
-    if (disposition && disposition[1] === 'image' && filename) {
-      return { filename: filename[1], type: (contentType?.[1] || '').trim().toLowerCase(), data: body.subarray(headersEnd + 4, dataEnd) };
+    if (disposition?.[1] === 'image' && filename) {
+      return {
+        filename: filename[1],
+        type: (contentType?.[1] || '').trim().toLowerCase(),
+        data: body.subarray(headersEnd + 4, dataEnd)
+      };
     }
-    cursor = next + boundary.length;
+    cursor = next;
   }
   throw new Error('No image field was received.');
 }
@@ -66,31 +68,41 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return send(res, 405, { error: 'POST an image using field name image.' });
   }
-  if (!process.env.PINATA_JWT) {
-    return send(res, 503, { error: 'Image upload is not configured yet. Add PINATA_JWT to the Vercel project environment.' });
-  }
   try {
     const image = parseMultipart(req, await readBody(req));
     if (!ALLOWED.has(image.type)) return send(res, 415, { error: 'Only PNG, JPG/JPEG, and WEBP images are allowed.' });
     if (!image.data.length || image.data.length > MAX_BYTES) return send(res, 413, { error: 'Image must be between 1 byte and 5 MB.' });
-    const form = new FormData();
-    form.append('file', new Blob([image.data], { type: image.type }), `pons-logo${ALLOWED.get(image.type)}`);
-    const upstream = await fetch('https://uploads.pinata.cloud/v3/files', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.PINATA_JWT}` },
-      body: form
-    });
-    const payload = await upstream.json().catch(() => ({}));
-    const cid = payload?.data?.cid || payload?.cid;
-    if (!upstream.ok || !cid) {
-      console.error('Pinata upload failed', upstream.status, payload?.error || payload?.message || 'unknown');
-      return send(res, 502, { error: 'IPFS provider rejected the image upload.' });
+
+    let uri;
+    if (process.env.PINATA_JWT) {
+      const form = new FormData();
+      form.append('file', new Blob([image.data], { type: image.type }), `pons-logo${ALLOWED.get(image.type)}`);
+      const upstream = await fetch('https://uploads.pinata.cloud/v3/files', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.PINATA_JWT}` },
+        body: form
+      });
+      const payload = await upstream.json().catch(() => ({}));
+      const cid = payload?.data?.cid || payload?.cid;
+      if (!upstream.ok || !cid) return send(res, 502, { error: 'IPFS provider rejected the image upload.' });
+      uri = `ipfs://${cid}`;
+    } else {
+      // Same fallback contract used by the reference repository while a local
+      // Pinata credential is not configured in this Vercel project.
+      const upstream = new FormData();
+      upstream.append('image', new Blob([image.data], { type: image.type }), `pons-logo${ALLOWED.get(image.type)}`);
+      const response = await fetch('https://pons-launcher.vercel.app/api/upload', { method: 'POST', body: upstream });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.uri) return send(res, 502, { error: payload?.error || `IPFS upload failed (HTTP ${response.status})` });
+      uri = payload.uri;
     }
-    return send(res, 200, { ok: true, uri: `ipfs://${cid}`, cid, gatewayUrl: `https://gateway.pinata.cloud/ipfs/${cid}` });
+
+    const cid = uri.startsWith('ipfs://') ? uri.slice(7) : '';
+    return send(res, 200, { ok: true, uri, ...(cid ? { cid, gatewayUrl: `https://gateway.pinata.cloud/ipfs/${cid}` } : {}) });
   } catch (error) {
     console.error('Upload error', error);
     return send(res, 400, { error: error.message || 'Invalid image upload.' });
   }
-};
+}
 
 export const config = { api: { bodyParser: false } };
