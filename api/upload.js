@@ -61,7 +61,7 @@ function readBody(req) {
   });
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return send(res, 405, { error: 'POST an image using field name image.' });
@@ -93,4 +93,4 @@ module.exports = async function handler(req, res) {
   }
 };
 
-module.exports.config = { api: { bodyParser: false } };
+export const config = { api: { bodyParser: false } };
