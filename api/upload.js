@@ -60,12 +60,7 @@ export default async function handler(req, res) {
       if (!upstream.ok || !cid) return send(res, 502, { error: 'IPFS provider rejected the image upload.' });
       uri = `ipfs://${cid}`;
     } else {
-      const upstream = new FormData();
-      upstream.append('image', new Blob([image.data], { type: image.type }), image.filename);
-      const response = await fetch('https://pons-launcher.vercel.app/api/upload', { method: 'POST', body: upstream });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload?.uri) return send(res, 502, { error: payload?.error || `IPFS upload failed (HTTP ${response.status})` });
-      uri = payload.uri;
+      return send(res, 503, { error: 'IPFS upload is not configured. Add PINATA_JWT in Vercel Environment Variables.' });
     }
     const cid = uri.startsWith('ipfs://') ? uri.slice(7) : '';
     return send(res, 200, { ok: true, uri, ...(cid ? { cid, gatewayUrl: `https://gateway.pinata.cloud/ipfs/${cid}` } : {}) });
