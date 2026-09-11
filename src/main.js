@@ -142,14 +142,7 @@ async function uploadLogo(file){
  logoFile=file; logoPreview=URL.createObjectURL(file); logoUploading=true; form.logo=''; render();
  const body=new FormData(); body.append('image',file,file.name);
  let r=await fetch('/api/upload',{method:'POST',body});
- let j=await r.json().catch(()=>({}));
- // Same compatibility fallback as the reference repository. This keeps the
- // picker functional if the self-hosted adapter is temporarily unavailable.
- if(!r.ok||!j.uri){
-   const fallback=new FormData(); fallback.append('image',file,file.name);
-   r=await fetch('https://pons-launcher.vercel.app/api/upload',{method:'POST',body:fallback});
-   j=await r.json().catch(()=>({}));
- }
+ const j=await r.json().catch(()=>({}));
  if(!r.ok||!j.uri)throw new Error(j.error||`Logo upload failed (HTTP ${r.status})`);
  form.logo=j.uri; logoUploading=false; render(); return j.uri;
 }
