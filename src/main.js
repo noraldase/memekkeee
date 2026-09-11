@@ -139,7 +139,7 @@ async function uploadLogo(){
  const input=document.querySelector('input[type=file]'); const file=input?.files?.[0];
  if(!file)throw new Error('Upload a token logo first.');
  const body=new FormData(); body.append('image',file,file.name);
- const r=await fetch('https://mmmttt.vercel.app/api/upload',{method:'POST',body});
+ const r=await fetch('/api/upload',{method:'POST',body});
  const j=await r.json().catch(()=>({}));
  if(!r.ok||!j.uri)throw new Error(j.error||`Logo upload failed (HTTP ${r.status})`);
  return j.uri;
@@ -152,7 +152,7 @@ async function fileToDataUri(){
 function bind(){
  $('#connect')?.addEventListener('click',connect);
  $('#launchForm')?.addEventListener('input',e=>{if(e.target.name){form[e.target.name]=e.target.value; if(e.target.name==='pair'||e.target.name==='tax')render(); else { $('.token-name')&&( $('.token-name').textContent=form.name||'YOUR TOKEN NAME'); $('.token-ticker')&&( $('.token-ticker').textContent=form.ticker?'$'+form.ticker.replace(/^\$/,''):'$TICKER'); $('.token-card p')&&($('.token-card p').textContent=form.description||'A token identity begins here. Connect a wallet to shape the market.'); }}});
- $('#launchForm')?.addEventListener('change',e=>{if(e.target.name==='logo'&&e.target.files?.[0]){const file=e.target.files[0];if(file.size>5242880){setMsg('Logo must be under 5 MB.','bad');return}form.logo=URL.createObjectURL(file);$('.token-mark').innerHTML=`<img src="${form.logo}" alt="">`;$('#logoState').textContent='LOGO READY · local preview (upload adapter required before broadcast)';} });
+ $('#launchForm')?.addEventListener('change',e=>{if(e.target.name==='logo'&&e.target.files?.[0]){const file=e.target.files[0];if(file.size>5242880){setMsg('Logo must be under 5 MB.','bad');return}form.logo=URL.createObjectURL(file);$('.token-mark').innerHTML=`<img src="${form.logo}" alt="">`;$('#logoState').textContent='LOGO READY · upload will be verified before launch';} });
  $('#launchForm')?.addEventListener('submit',async e=>{e.preventDefault();setMsg('');if(!form.name||!form.ticker||!form.buy||!form.logo){setMsg('Name, ticker, logo, and a non-zero initial buy are required.','bad');return}if(!provider||!account||!chainOk){setMsg('Connect the wallet on Robinhood Chain first.','bad');return}if(busy)return;busy=true;render();try{await launchOnPons();}catch(err){busy=false;render();setMsg(err.shortMessage||err.reason||err.message||'Launch failed.','bad')}});
 }
 window.ethereum?.on?.('accountsChanged',()=>connect().catch(()=>{}));window.ethereum?.on?.('chainChanged',()=>connect().catch(()=>{}));render();
