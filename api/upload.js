@@ -18,31 +18,20 @@ function parseMultipart(req, body) {
   const match = type.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
   if (!match) throw new Error('Multipart boundary is missing.');
   const boundary = Buffer.from(`--${match[1] || match[2]}`);
-  let cursor = body.indexOf(boundary);
-  while (cursor >= 0 && cursor < body.length) {
-    cursor += boundary.length;
-    if (body[cursor] === 45 && body[cursor + 1] === 45) break;
-    if (body[cursor] === 13 && body[cursor + 1] === 10) cursor += 2;
-    const headersEnd = body.indexOf(Buffer.from('\r\n\r\n'), cursor);
-    if (headersEnd < 0) break;
-    const headers = body.subarray(cursor, headersEnd).toString('utf8');
-    const next = body.indexOf(boundary, headersEnd + 4);
-    if (next < 0) break;
-    let dataEnd = next;
-    if (body[dataEnd - 2] === 13 && body[dataEnd - 1] === 10) dataEnd -= 2;
-    const disposition = headers.match(/content-disposition:[^\r\n]*name="([^"]+)"[^\r\n]*/i);
-    const filename = headers.match(/filename="([^"]*)"/i);
-    const contentType = headers.match(/content-type:\s*([^\r\n]+)/i);
-    if (disposition?.[1] === 'image' && filename) {
-      return {
-        filename: filename[1],
-        type: (contentType?.[1] || '').trim().toLowerCase(),
-        data: body.subarray(headersEnd + 4, dataEnd)
-      };
-    }
-    cursor = next;
-  }
-  throw new Error('No image field was received.');
+  const field = Buffer.from('name="image"');
+  const fieldAt = body.indexOf(field);
+  if (fieldAt < 0) throw new Error('No image field was received.');
+  const headerStart = body.lastIndexOf(boundary, fieldAt);
+  const headersEnd = body.indexOf(Buffer.from('\r\n\r\n'), fieldAt);
+  const dataStart = headersEnd + 4;
+  const nextBoundary = body.indexOf(boundary, dataStart);
+  if (headerStart < 0 || headersEnd < 0 || nextBoundary < 0) throw new Error('Invalid multipart body.');
+  const headers = body.subarray(headerStart, headersEnd).toString('utf8');
+  let dataEnd = nextBoundary;
+  if (body[dataEnd - 2] === 13 && body[dataEnd - 1] === 10) dataEnd -= 2;
+  const filename = headers.match(/filename="([^"]*)"/i)?.[1] || 'token-logo';
+  const contentType = headers.match(/content-type:\s*([^\r\n]+)/i)?.[1]?.trim().toLowerCase() || '';
+  return { filename, type: contentType, data: body.subarray(dataStart, dataEnd) };
 }
 
 function readBody(req) {
